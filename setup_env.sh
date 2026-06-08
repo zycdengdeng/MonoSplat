@@ -117,6 +117,9 @@ fi
 #   - torch must stay 2.1.2+cu121 (the cu version we installed)
 #   - torch 2.1.2 needs NumPy 1.x (crashes under NumPy 2.x)
 #   - torch's cpp_extension imports pkg_resources, dropped by setuptools >= 81
+#   - e3nn >= 0.6 requires torch >= 2.2 (we're on 2.1.2)
+#   - moviepy 2.x removed moviepy.editor, which model_wrapper.py imports
+#   - torchvision 0.16.2 predates Pillow 11/12
 CONSTRAINTS="${REPO_DIR}/third_party/constraints.txt"
 cat > "${CONSTRAINTS}" <<'EOF'
 torch==2.1.2
@@ -124,13 +127,16 @@ torchvision==0.16.2
 torchaudio==2.1.2
 numpy<2
 setuptools<81
+e3nn<0.6
+moviepy<2
+pillow<11
 EOF
 grep -v '^[[:space:]]*git+' "${REPO_DIR}/requirements.txt" \
   | pip install -c "${CONSTRAINTS}" -r /dev/stdin
-pip install -c "${CONSTRAINTS}" "numpy<2" "setuptools<81" ninja
+pip install -c "${CONSTRAINTS}" "numpy<2" "setuptools<81" "e3nn<0.6" "moviepy<2" "pillow<11" ninja
 
 echo "    sanity:"
-python -c "import torch, numpy; print('    torch', torch.__version__, '| numpy', numpy.__version__)"
+python -c "import torch, numpy, PIL, moviepy.editor; print('    torch', torch.__version__, '| numpy', numpy.__version__, '| pillow', PIL.__version__)"
 
 # --no-build-isolation: the rasterizer's setup.py imports torch at build time,
 # which pip's isolated build env wouldn't have. Install into the torch-equipped
