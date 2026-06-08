@@ -30,6 +30,12 @@ echo ">>> Target CUDA: cu${CUDA}   conda env: ${ENV_NAME}"
 echo ">>> [1/5] Configuring global git mirror -> ${PROXY}"
 git config --global url."${PROXY}https://github.com/".insteadOf "https://github.com/"
 git config --global url."${PROXY}https://raw.githubusercontent.com/".insteadOf "https://raw.githubusercontent.com/"
+# Robustness on flaky networks: HTTP/1.1 avoids the common
+# "RPC failed; curl 92 HTTP/2 stream ... INTERNAL_ERROR" / "early EOF" on clones.
+git config --global http.version HTTP/1.1
+git config --global http.postBuffer 524288000
+git config --global http.lowSpeedLimit 0
+git config --global http.lowSpeedTime 999999
 echo "    git insteadOf rules:"
 git config --global --get-regexp 'url\..*\.insteadof' || true
 
@@ -61,12 +67,35 @@ pip install torch==2.1.2 torchvision==0.16.2 torchaudio==2.1.2 \
 # --------------------------------------------------------------------------- #
 echo ">>> [4/5] Installing requirements.txt"
 if [[ -z "${CUDA_HOME:-}" ]]; then
-  for c in "/usr/local/cuda-12.1" "/usr/local/cuda-11.8" "/usr/local/cuda"; do
+  for c in "/usr/local/cuda-${CUDA:0:2}.${CUDA:2}" "/usr/local/cuda-12.1" "/usr/local/cuda-11.8" "/usr/local/cuda"; do
     [[ -d "$c" ]] && export CUDA_HOME="$c" && break
   done
 fi
 echo "    CUDA_HOME=${CUDA_HOME:-<unset>} (needed to compile diff-gaussian-rasterization)"
-pip install -r "${REPO_DIR}/requirements.txt"
+
+# The modified rasterizer pulls a git submodule (glm). Letting pip recurse
+# submodules is fragile on flaky networks, so pre-clone it recursively (with
+# retries) through the mirror and install from the local path instead.
+RAST_DIR="${REPO_DIR}/third_party/diff-gaussian-rasterization-modified"
+mkdir -p "${REPO_DIR}/third_party"
+if [[ ! -d "${RAST_DIR}/.git" ]]; then
+  for i in 1 2 3 4 5; do
+    git clone --recursive \
+      https://github.com/dcharatan/diff-gaussian-rasterization-modified "${RAST_DIR}" && break
+    echo "    rasterizer clone retry ${i}..."; sleep 3
+  done
+fi
+for i in 1 2 3 4 5; do
+  ( cd "${RAST_DIR}" && git submodule update --init --recursive ) && break
+  echo "    submodule retry ${i}..."; sleep 3
+done
+if [[ ! -e "${RAST_DIR}/third_party/glm/CMakeLists.txt" ]]; then
+  echo "    ERROR: glm submodule missing under ${RAST_DIR}/third_party/glm -- check network."; exit 1
+fi
+pip install "${RAST_DIR}"
+
+# Install everything else (skip the git+ line, handled above).
+grep -v '^[[:space:]]*git+' "${REPO_DIR}/requirements.txt" | pip install -r /dev/stdin
 
 # --------------------------------------------------------------------------- #
 # 5) Pre-fetch the DINOv2 backbone code into the torch.hub cache via the mirror.

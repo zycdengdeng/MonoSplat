@@ -178,3 +178,6 @@ table.tex
 /test/*
 point_clouds*
 assets/*_3views.json
+
+# local build deps fetched by setup_env.sh
+third_party/
