@@ -111,13 +111,26 @@ if [[ ! -e "${RAST_DIR}/third_party/glm/glm/glm.hpp" ]]; then
   echo "    ERROR: glm headers still missing under ${RAST_DIR}/third_party/glm -- check network."; exit 1
 fi
 
-# Install everything else first (skip the git+ line, handled below).
-grep -v '^[[:space:]]*git+' "${REPO_DIR}/requirements.txt" | pip install -r /dev/stdin
-
-# Pin compatibility versions AFTER the other deps (which might pull numpy 2.x):
-#   - torch 2.1.2 was built against NumPy 1.x (crashes under NumPy 2.x)
+# Install everything else first (skip the git+ line, handled below). Use a
+# constraints file so deps like timm/pytorch_lightning (which only say
+# torch>=2.1.0) can't UPGRADE torch/numpy/setuptools out from under us:
+#   - torch must stay 2.1.2+cu121 (the cu version we installed)
+#   - torch 2.1.2 needs NumPy 1.x (crashes under NumPy 2.x)
 #   - torch's cpp_extension imports pkg_resources, dropped by setuptools >= 81
-pip install "numpy<2" "setuptools<81" ninja
+CONSTRAINTS="${REPO_DIR}/third_party/constraints.txt"
+cat > "${CONSTRAINTS}" <<'EOF'
+torch==2.1.2
+torchvision==0.16.2
+torchaudio==2.1.2
+numpy<2
+setuptools<81
+EOF
+grep -v '^[[:space:]]*git+' "${REPO_DIR}/requirements.txt" \
+  | pip install -c "${CONSTRAINTS}" -r /dev/stdin
+pip install -c "${CONSTRAINTS}" "numpy<2" "setuptools<81" ninja
+
+echo "    sanity:"
+python -c "import torch, numpy; print('    torch', torch.__version__, '| numpy', numpy.__version__)"
 
 # --no-build-isolation: the rasterizer's setup.py imports torch at build time,
 # which pip's isolated build env wouldn't have. Install into the torch-equipped
