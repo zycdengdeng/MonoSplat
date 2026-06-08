@@ -89,8 +89,26 @@ for i in 1 2 3 4 5; do
   ( cd "${RAST_DIR}" && git submodule update --init --recursive ) && break
   echo "    submodule retry ${i}..."; sleep 3
 done
-if [[ ! -e "${RAST_DIR}/third_party/glm/CMakeLists.txt" ]]; then
-  echo "    ERROR: glm submodule missing under ${RAST_DIR}/third_party/glm -- check network."; exit 1
+# Fallback: if the glm submodule still didn't land (flaky git-over-proxy keeps
+# throwing 'HTTP/2 stream ... INTERNAL_ERROR'), fetch the *pinned* glm snapshot
+# as a zip via the mirror. Archive downloads through gh-proxy are far more
+# reliable than recursive git clones.
+if [[ ! -e "${RAST_DIR}/third_party/glm/glm/glm.hpp" ]]; then
+  echo "    glm submodule missing; fetching pinned snapshot as zip via mirror"
+  GLM_SHA=$( cd "${RAST_DIR}" && git ls-tree HEAD third_party/glm 2>/dev/null | awk '{print $3}' )
+  GLM_SHA="${GLM_SHA:-master}"
+  echo "    glm pinned at ${GLM_SHA}"
+  rm -rf /tmp/glm_unzip && mkdir -p /tmp/glm_unzip
+  for i in 1 2 3 4 5; do
+    curl -fL "${PROXY}https://github.com/g-truc/glm/archive/${GLM_SHA}.zip" -o /tmp/glm_snapshot.zip \
+      && unzip -q -o /tmp/glm_snapshot.zip -d /tmp/glm_unzip && break
+    echo "    glm zip retry ${i}..."; sleep 3
+  done
+  rm -rf "${RAST_DIR}/third_party/glm"
+  mv /tmp/glm_unzip/glm-* "${RAST_DIR}/third_party/glm"
+fi
+if [[ ! -e "${RAST_DIR}/third_party/glm/glm/glm.hpp" ]]; then
+  echo "    ERROR: glm headers still missing under ${RAST_DIR}/third_party/glm -- check network."; exit 1
 fi
 pip install "${RAST_DIR}"
 
