@@ -110,7 +110,11 @@ fi
 if [[ ! -e "${RAST_DIR}/third_party/glm/glm/glm.hpp" ]]; then
   echo "    ERROR: glm headers still missing under ${RAST_DIR}/third_party/glm -- check network."; exit 1
 fi
-pip install "${RAST_DIR}"
+# --no-build-isolation: the rasterizer's setup.py imports torch at build time,
+# which pip's isolated build env wouldn't have. We install into the already
+# torch-equipped conda env, so disable isolation.
+pip install ninja
+pip install --no-build-isolation "${RAST_DIR}"
 
 # Install everything else (skip the git+ line, handled above).
 grep -v '^[[:space:]]*git+' "${REPO_DIR}/requirements.txt" | pip install -r /dev/stdin
