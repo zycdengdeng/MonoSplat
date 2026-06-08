@@ -130,10 +130,11 @@ setuptools<81
 e3nn<0.6
 moviepy<2
 pillow<11
+plyfile<1.1
 EOF
 grep -v '^[[:space:]]*git+' "${REPO_DIR}/requirements.txt" \
   | pip install -c "${CONSTRAINTS}" -r /dev/stdin
-pip install -c "${CONSTRAINTS}" "numpy<2" "setuptools<81" "e3nn<0.6" "moviepy<2" "pillow<11" ninja
+pip install -c "${CONSTRAINTS}" "numpy<2" "setuptools<81" "e3nn<0.6" "moviepy<2" "pillow<11" "plyfile<1.1" ninja
 
 echo "    sanity:"
 python -c "import torch, numpy, PIL, moviepy.editor; print('    torch', torch.__version__, '| numpy', numpy.__version__, '| pillow', PIL.__version__)"
