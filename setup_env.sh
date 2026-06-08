@@ -110,14 +110,19 @@ fi
 if [[ ! -e "${RAST_DIR}/third_party/glm/glm/glm.hpp" ]]; then
   echo "    ERROR: glm headers still missing under ${RAST_DIR}/third_party/glm -- check network."; exit 1
 fi
-# --no-build-isolation: the rasterizer's setup.py imports torch at build time,
-# which pip's isolated build env wouldn't have. We install into the already
-# torch-equipped conda env, so disable isolation.
-pip install ninja
-pip install --no-build-isolation "${RAST_DIR}"
 
-# Install everything else (skip the git+ line, handled above).
+# Install everything else first (skip the git+ line, handled below).
 grep -v '^[[:space:]]*git+' "${REPO_DIR}/requirements.txt" | pip install -r /dev/stdin
+
+# Pin compatibility versions AFTER the other deps (which might pull numpy 2.x):
+#   - torch 2.1.2 was built against NumPy 1.x (crashes under NumPy 2.x)
+#   - torch's cpp_extension imports pkg_resources, dropped by setuptools >= 81
+pip install "numpy<2" "setuptools<81" ninja
+
+# --no-build-isolation: the rasterizer's setup.py imports torch at build time,
+# which pip's isolated build env wouldn't have. Install into the torch-equipped
+# conda env with isolation disabled.
+pip install --no-build-isolation "${RAST_DIR}"
 
 # --------------------------------------------------------------------------- #
 # 5) Pre-fetch the DINOv2 backbone code into the torch.hub cache via the mirror.
