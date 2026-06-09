@@ -133,6 +133,17 @@ def read_points3D(scene_sparse):
                 (track_len,) = struct.unpack("<Q", f.read(8))
                 f.read(8 * track_len)  # track elements
         return np.array(xyz, dtype=np.float64) if xyz else None
+    plyp = os.path.join(scene_sparse, "points3D.ply")
+    if os.path.exists(plyp):
+        try:
+            from plyfile import PlyData
+            v = PlyData.read(plyp)["vertex"]
+            xyz = np.stack([np.asarray(v["x"]), np.asarray(v["y"]),
+                            np.asarray(v["z"])], axis=1).astype(np.float64)
+            return xyz if len(xyz) else None
+        except Exception as e:
+            print(f"[warn] failed to read {plyp}: {e}")
+            return None
     return None
 
 
