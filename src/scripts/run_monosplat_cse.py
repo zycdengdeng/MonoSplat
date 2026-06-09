@@ -184,6 +184,41 @@ def round_to_multiple(x, m=16):
     return max(m, int(round(x / m)) * m)
 
 
+def estimate_near_far_from_rig(imgs, src_names, rig_radius_m=0.75,
+                               near_m=0.5, far_m=100.0):
+    """near/far when there are no points3D, using the known CARLA rig geometry.
+
+    The source views are 6 cameras of a radius-`rig_radius_m` ring per frame.
+    Grouping source views by frame (the token after the last '_' in the name),
+    the mean distance of a frame's camera centers to their centroid ~= the ring
+    radius in COLMAP units. That gives a COLMAP-units-per-meter scale, which we
+    use to turn a metric depth bracket [near_m, far_m] into COLMAP units.
+    """
+    from collections import defaultdict
+
+    def center(n):
+        q, t, _ = imgs[n]
+        return -qvec2rotmat(q).T @ t
+
+    groups = defaultdict(list)
+    for n in src_names:
+        frame = os.path.splitext(n)[0].split("_")[-1]
+        groups[frame].append(center(n))
+    radii = [float(np.linalg.norm(np.asarray(cs) - np.asarray(cs).mean(0), axis=1).mean())
+             for cs in groups.values() if len(cs) >= 3]
+    if not radii:
+        raise RuntimeError(
+            "no points3D and could not group source cameras into rig frames "
+            "(expected names like '<cam>_<frame>.ext'); pass --near/--far explicitly.")
+    ring = float(np.median(radii))
+    scale = ring / rig_radius_m  # COLMAP units per meter
+    near, far = near_m * scale, far_m * scale
+    info = (f"ring~{ring:.4f}u (={rig_radius_m}m) -> {scale:.4f} u/m | "
+            f"near={near:.4f} far={far:.4f} (={near_m}-{far_m}m, {len(radii)} frames)")
+    return near, far, info
+
+
+
 # --------------------------------------------------------------------------- #
 # Model construction (mirrors src/main.py so the checkpoint loads cleanly)
 # --------------------------------------------------------------------------- #
@@ -266,12 +301,14 @@ def run_scene(encoder, decoder, scene, out_dir, args, device):
         near, far = args.near, args.far
     else:
         pts = read_points3D(sparse)
-        if pts is None or len(pts) < 10:
-            raise RuntimeError(
-                f"{scene}: no usable points3D for near/far estimation; "
-                f"pass --near/--far explicitly.")
-        src_qt = [imgs[n] for n in src_names]
-        near, far = estimate_near_far(pts, src_qt)
+        if pts is not None and len(pts) >= 10:
+            src_qt = [imgs[n] for n in src_names]
+            near, far = estimate_near_far(pts, src_qt)
+        else:
+            # No sparse points (CARLA CSE scenes): derive scale from the rig.
+            near, far, info = estimate_near_far_from_rig(
+                imgs, src_names, args.rig_radius, args.near_m, args.far_m)
+            print(f"  [no points3D] {info}")
     print(f"[{os.path.basename(scene.rstrip('/'))}] near={near:.4f} far={far:.4f} "
           f"| {len(src_names)} src, {len(test_names)} target")
 
@@ -349,6 +386,12 @@ def main():
                     help="context network input long side (rounded to /16)")
     ap.add_argument("--near", type=float, default=None, help="override near (COLMAP units)")
     ap.add_argument("--far", type=float, default=None, help="override far (COLMAP units)")
+    ap.add_argument("--rig_radius", type=float, default=0.75,
+                    help="CARLA rig radius in meters (for near/far when no points3D)")
+    ap.add_argument("--near_m", type=float, default=0.5,
+                    help="metric near (m) used with rig-based scale")
+    ap.add_argument("--far_m", type=float, default=100.0,
+                    help="metric far (m) used with rig-based scale")
     args = ap.parse_args()
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
