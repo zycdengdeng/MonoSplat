@@ -114,7 +114,10 @@ def render_cuda(
 
         row, col = torch.triu_indices(3, 3)
 
-        image, _, _, _, radii = rasterizer(
+        # The pinned rasterizer (dcharatan/diff-gaussian-rasterization-modified)
+        # returns (color, radii); other forks return more. Take element 0 (the
+        # rendered image is always first); radii is unused downstream.
+        rasterizer_out = rasterizer(
             means3D=gaussian_means[i],
             means2D=mean_gradients,
             shs=shs[i] if use_sh else None,
@@ -122,8 +125,8 @@ def render_cuda(
             opacities=gaussian_opacities[i, ..., None],
             cov3D_precomp=gaussian_covariances[i, :, row, col],
         )
+        image = rasterizer_out[0]
         all_images.append(image)
-        all_radii.append(radii)
     return torch.stack(all_images)
 
 
@@ -207,7 +210,10 @@ def render_cuda_orthographic(
 
         row, col = torch.triu_indices(3, 3)
 
-        image, _, _, _, radii = rasterizer(
+        # The pinned rasterizer (dcharatan/diff-gaussian-rasterization-modified)
+        # returns (color, radii); other forks return more. Take element 0 (the
+        # rendered image is always first); radii is unused downstream.
+        rasterizer_out = rasterizer(
             means3D=gaussian_means[i],
             means2D=mean_gradients,
             shs=shs[i] if use_sh else None,
@@ -215,8 +221,8 @@ def render_cuda_orthographic(
             opacities=gaussian_opacities[i, ..., None],
             cov3D_precomp=gaussian_covariances[i, :, row, col],
         )
+        image = rasterizer_out[0]
         all_images.append(image)
-        all_radii.append(radii)
     return torch.stack(all_images)
 
 
