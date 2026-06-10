@@ -300,12 +300,18 @@ def run_scene(encoder, decoder, scene, out_dir, args, device):
     assert src_names, f"no source views found in {scene}"
     assert test_names, f"no target views in test.txt for {scene}"
 
-    # Camera centers (world) for context selection.
+    # Camera centers + forward dirs (world) for direction-aware context selection.
     def center(name):
         q, t, _ = imgs[name]
         return -qvec2rotmat(q).T @ t
 
+    def forward(name):
+        # OpenCV camera looks along +z; world forward = R^T @ [0,0,1] = R[2, :].
+        q, _, _ = imgs[name]
+        return qvec2rotmat(q)[2, :]
+
     src_centers = {n: center(n) for n in src_names}
+    src_fwd = {n: forward(n) for n in src_names}
 
     # near / far in COLMAP units.
     if args.near is not None and args.far is not None:
@@ -332,10 +338,20 @@ def run_scene(encoder, decoder, scene, out_dir, args, device):
         q_t, t_t, cam_t = imgs[name]
         W, H, fx, fy, cx, cy = cams[cam_t]
         tgt_center = center(name)
+        tgt_fwd = forward(name)
 
-        # Pick N nearest source views as context.
-        order = sorted(src_names, key=lambda n: np.linalg.norm(src_centers[n] - tgt_center))
-        ctx_names = order[: args.n_context]
+        # Direction-aware context selection. The CARLA rig cameras nearly share a
+        # center but face different directions, so pure nearest-center picks
+        # wrong-facing views and renders collapse to black. Keep only source
+        # views whose forward aligns with the target (dot > align_thresh), then
+        # take the nearest by camera center. (Matches the CARLA MVSplat recipe.)
+        aligned = [n for n in src_names
+                   if float(src_fwd[n] @ tgt_fwd) > args.align_thresh]
+        pool = aligned if len(aligned) >= args.n_context else sorted(
+            src_names, key=lambda n: -float(src_fwd[n] @ tgt_fwd))
+        ctx_names = sorted(
+            pool, key=lambda n: np.linalg.norm(src_centers[n] - tgt_center)
+        )[: args.n_context]
 
         # Network input size for context (preserve aspect, divisible by 16).
         scale = args.net_long_side / max(W, H)
@@ -391,8 +407,10 @@ def main():
     ap.add_argument("--checkpoint", required=True, help="MonoSplat .ckpt path")
     ap.add_argument("--experiment", default="re10k",
                     help="base experiment config (re10k or dtu); controls model hyperparams")
-    ap.add_argument("--n_context", type=int, default=2,
-                    help="number of nearest source views fed as context per target")
+    ap.add_argument("--n_context", type=int, default=6,
+                    help="number of context source views per target (direction-aware)")
+    ap.add_argument("--align_thresh", type=float, default=0.5,
+                    help="min forward-direction dot to keep a source as context")
     ap.add_argument("--net_long_side", type=int, default=256,
                     help="context network input long side (rounded to /16)")
     ap.add_argument("--near", type=float, default=None, help="override near (COLMAP units)")
