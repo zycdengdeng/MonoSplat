@@ -33,7 +33,10 @@ from pathlib import Path
 
 import numpy as np
 import torch
-from PIL import Image
+from PIL import Image, ImageFile
+
+# Some CARLA renders are slightly truncated PNGs; let PIL load them anyway.
+ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 # Build the model exactly like src/main.py (so the architecture matches the ckpt).
 from hydra import compose, initialize_config_dir
