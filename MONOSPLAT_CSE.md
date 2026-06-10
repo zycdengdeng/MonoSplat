@@ -8,6 +8,29 @@ position the work in the generalizable-3DGS literature (审稿意见 2).
 
 Adapter: [`src/scripts/run_monosplat_cse.py`](src/scripts/run_monosplat_cse.py).
 
+## Results (CARLA CSE, 5 seqs, same `eval_cse.py`)
+
+| Method | PSNR | SSIM | LPIPS | Type |
+|---|---|---|---|---|
+| MonoSplat zero-shot (6-view) | 16.70 | 0.694 | 0.498 | feed-forward, no opt |
+| **MonoSplat fine-tuned (CARLA, best @500)** | **17.91** | 0.690 | 0.456 | feed-forward |
+| MVSplat zero-shot | 17.28 | – | – | feed-forward |
+| MVSplat fine-tuned | 17.96 | 0.674 | 0.405 | feed-forward |
+| 3DGS baseline | 18.00 | – | – | per-scene opt |
+| **GS-Net + 3DGS (ours)** | **19.89** | – | – | per-scene opt |
+
+MonoSplat fine-tune per-step CSE (PSNR/SSIM peak at step 500, then decline as
+more fine-tuning overfits odd→odd interpolation and hurts odd→even cross-sensor
+extrapolation): 500→17.91, 1000→17.45, 1500→17.13, 2000→16.90, 2500→16.66,
+3000→16.51.
+
+**Takeaway**: both leading feed-forward generalizable Gaussian methods (MVSplat,
+MonoSplat), even after CARLA fine-tuning, plateau at ~17.9–18.0 PSNR — below
+GS-Net+3DGS (19.89, +1.9). Cross-sensor extrapolation is a structural limit of
+the feed-forward paradigm, which is exactly the gap GS-Net+3DGS fills.
+
+
+
 ---
 
 ## What it does
