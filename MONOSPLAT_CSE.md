@@ -129,3 +129,39 @@ Compare against our reference numbers (same evaluator):
 A feed-forward, no-per-scene-optimization MonoSplat number on this same CSE
 protocol lets the paper state precisely where GS-Net sits relative to
 generalizable Gaussian methods — exactly what the reviewers asked for.
+
+---
+
+## Fine-tuning MonoSplat on CARLA (optional, stronger rebuttal)
+
+Zero-shot already shows MonoSplat < GS-Net. To also show a *CARLA-fine-tuned*
+feed-forward method stays below GS-Net, fine-tune with photometric self-
+supervision (`src/scripts/finetune_cse.py`).
+
+Key MonoSplat-specific point: the monocular foundation (DINOv2 + Depth-Anything
+`depth_head`) is **frozen** in the model code, so only the multi-view fusion +
+Gaussian-prediction params train. That preserves the generalizable prior and
+avoids overfitting the small CARLA set. The script filters `requires_grad`
+params automatically.
+
+```bash
+# train (43 CARLA *_dense scenes; test seqs 110/210/310/410/510 auto-excluded)
+CUDA_VISIBLE_DEVICES=2 python -m src.scripts.finetune_cse \
+    --train_glob '/mnt/zihanw/carla/input_output/*_dense' \
+    --checkpoint checkpoints/monosplat_re10k.ckpt \
+    --out checkpoints/monosplat_carla_ft \
+    --lr 5e-6 --steps 3000 --save_every 500 --warmup 100
+# ~30 min on one A100; saves finetune_000500.ckpt ... finetune_003000.ckpt
+
+# render + score each saved ckpt, report the best step (same protocol as MVSplat ft)
+CUDA_VISIBLE_DEVICES=2 python -m src.scripts.run_monosplat_cse \
+    --checkpoint checkpoints/monosplat_carla_ft/finetune_001000.ckpt \
+    --multi runs/cse_scenes/110:monosplat_ft/110/renders ... runs/cse_scenes/510:monosplat_ft/510/renders
+# then gsnet/eval_cse.py --multi monosplat_ft/<id>/renders:runs/cse_scenes/<id> ...
+```
+
+Recipe (mirrors the proven CARLA MVSplat run): lr 5e-6, warmup 100, Adam,
+6 direction-aware context views, loss = MSE + 0.05·LPIPS(vgg), best ≈ step 1000
+(early stop — lr higher than 5e-6 catastrophically forgets). Reference: MVSplat
+zero-shot 17.28 → fine-tuned 17.96, still below GS-Net 19.89 / 3DGS 18.00.
+

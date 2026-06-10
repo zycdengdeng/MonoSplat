@@ -152,6 +152,59 @@ def read_test_txt(path):
         return [l.strip() for l in f if l.strip()]
 
 
+# ----- COLMAP binary readers (training scenes ship cameras.bin/images.bin) -----
+_CAM_MODEL_NPARAMS = {0: 3, 1: 4, 2: 4, 3: 5, 4: 8, 5: 8, 6: 12, 7: 5, 8: 4, 9: 5, 10: 12}
+
+
+def read_cameras_bin(path):
+    cams = {}
+    with open(path, "rb") as f:
+        (n,) = struct.unpack("<Q", f.read(8))
+        for _ in range(n):
+            cam_id, model_id, W, H = struct.unpack("<iiQQ", f.read(24))
+            k = _CAM_MODEL_NPARAMS.get(model_id, 4)
+            p = struct.unpack("<%dd" % k, f.read(8 * k))
+            if model_id == 0:  # SIMPLE_PINHOLE: f, cx, cy
+                fx = fy = p[0]; cx, cy = p[1], p[2]
+            else:  # PINHOLE etc: fx, fy, cx, cy
+                fx, fy, cx, cy = p[0], p[1], p[2], p[3]
+            cams[cam_id] = (W, H, fx, fy, cx, cy)
+    return cams
+
+
+def read_images_bin(path):
+    imgs = {}
+    with open(path, "rb") as f:
+        (n,) = struct.unpack("<Q", f.read(8))
+        for _ in range(n):
+            d = struct.unpack("<idddddddi", f.read(64))
+            qvec = np.array(d[1:5], dtype=np.float64)
+            tvec = np.array(d[5:8], dtype=np.float64)
+            cam_id = d[8]
+            name = b""
+            while True:
+                c = f.read(1)
+                if c == b"\x00":
+                    break
+                name += c
+            (num2d,) = struct.unpack("<Q", f.read(8))
+            f.read(24 * num2d)  # skip 2D points
+            imgs[name.decode()] = (qvec, tvec, cam_id)
+    return imgs
+
+
+def read_colmap(sparse):
+    """Read cameras + images from a COLMAP model, .txt or .bin."""
+    ct = os.path.join(sparse, "cameras.txt")
+    cams = read_cameras_txt(ct) if os.path.exists(ct) else read_cameras_bin(
+        os.path.join(sparse, "cameras.bin"))
+    it = os.path.join(sparse, "images.txt")
+    imgs = read_images_txt(it) if os.path.exists(it) else read_images_bin(
+        os.path.join(sparse, "images.bin"))
+    return cams, imgs
+
+
+
 # --------------------------------------------------------------------------- #
 # Geometry helpers
 # --------------------------------------------------------------------------- #
@@ -291,8 +344,7 @@ def load_image_tensor(path, size_wh=None):
 def run_scene(encoder, decoder, scene, out_dir, args, device):
     sparse = os.path.join(scene, "sparse", "0")
     images_dir = os.path.join(scene, "images")
-    cams = read_cameras_txt(os.path.join(sparse, "cameras.txt"))
-    imgs = read_images_txt(os.path.join(sparse, "images.txt"))
+    cams, imgs = read_colmap(sparse)
     test_names = read_test_txt(os.path.join(sparse, "test.txt"))
     test_set = set(test_names)
 
