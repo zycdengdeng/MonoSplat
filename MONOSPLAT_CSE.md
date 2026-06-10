@@ -13,21 +13,24 @@ Adapter: [`src/scripts/run_monosplat_cse.py`](src/scripts/run_monosplat_cse.py).
 | Method | PSNR | SSIM | LPIPS | Type |
 |---|---|---|---|---|
 | MonoSplat zero-shot (6-view) | 16.70 | 0.694 | 0.498 | feed-forward, no opt |
-| **MonoSplat fine-tuned (CARLA, best @500)** | **17.91** | 0.690 | 0.456 | feed-forward |
+| **MonoSplat fine-tuned (CARLA, best @200)** | **18.41** | 0.703 | 0.455 | feed-forward |
 | MVSplat zero-shot | 17.28 | – | – | feed-forward |
 | MVSplat fine-tuned | 17.96 | 0.674 | 0.405 | feed-forward |
 | 3DGS baseline | 18.00 | – | – | per-scene opt |
 | **GS-Net + 3DGS (ours)** | **19.89** | – | – | per-scene opt |
 
-MonoSplat fine-tune per-step CSE (PSNR/SSIM peak at step 500, then decline as
-more fine-tuning overfits odd→odd interpolation and hurts odd→even cross-sensor
-extrapolation): 500→17.91, 1000→17.45, 1500→17.13, 2000→16.90, 2500→16.66,
-3000→16.51.
+MonoSplat fine-tune sweep (CSE PSNR peaks at ~step 200, then declines as more
+fine-tuning overfits odd→odd interpolation and hurts odd→even cross-sensor
+extrapolation): 100→17.62, **200→18.41**, 300→18.29, 400→18.19, 500→18.06,
+600→18.00 (best step selected on CSE, same protocol as the MVSplat baseline).
 
-**Takeaway**: both leading feed-forward generalizable Gaussian methods (MVSplat,
-MonoSplat), even after CARLA fine-tuning, plateau at ~17.9–18.0 PSNR — below
-GS-Net+3DGS (19.89, +1.9). Cross-sensor extrapolation is a structural limit of
-the feed-forward paradigm, which is exactly the gap GS-Net+3DGS fills.
+**Takeaway**: even a CARLA-fine-tuned feed-forward MonoSplat (18.41) — which
+already surpasses the per-scene 3DGS baseline (18.00) and fine-tuned MVSplat
+(17.96) — stays 1.5 PSNR below GS-Net+3DGS (19.89). The feed-forward competitor
+was given every advantage and still loses, so GS-Net's gain is not an artifact
+of a weak initialization; cross-sensor synthesis is a structural limit of the
+feed-forward paradigm.
+
 
 
 
